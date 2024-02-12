@@ -222,75 +222,65 @@ app.get("/carousel/v2/pages/party", function (request, response) {
         }
       });
 
-      if (
-        request.body.searchString == "" ||
-        request.body.searchString == undefined
-      ) {
-        response.send(OnlineCarousel);
-      } else {
-        search = JSON.parse(
-          JSON.stringify(
-            require("./cosmos-database/v1/carousel/ex-cmos-partycar.json")
-          )
-        );
+// Carregar os dados do banco de dados uma vez
+var CarouselDB = require("./cosmos-database/v1/songdb/pc-cmos-songdb.json");
+var search = JSON.parse(
+  JSON.stringify(
+    require("./cosmos-database/v1/carousel/ex-cmos-partycar.json")
+  )
+);
 
-        // add search result to search
-        var current = 0;
-        var splice = 0;
-        search.categories.forEach(function (carousel) {
-          if (carousel.title == "[icon:SEARCH_FILTER] Search") {
-          } else {
-            current = current + 1;
-          }
-        });
-        var obj = JSON.parse(
-          '{ "__class": "Category", "title": "[icon:SEARCH_RESULT] insert search result here", "items": [], "isc": "grp_row", "act": "ui_carousel" }'
-        );
-        search.categories.splice(current + 1, 0, obj);
+// Evitar repetição de conversões de consulta para maiúsculas
+var query = request.body.searchString ? request.body.searchString.toString().toUpperCase() : '';
 
-        var CarouselDB = require("./cosmos-database/v1/songdb/pc-cmos-songdb.json");
-        var query = request.body.searchString.toString().toUpperCase();
+// Filtrar os resultados de busca de maneira eficiente
+var matches = CarouselDB.filter(obj => {
+  var title = obj.title.toString().toUpperCase();
+  var artist = obj.artist.toString().toUpperCase();
+  var mapname = obj.mapName.toString().toUpperCase();
+  var jdversion = obj.originalJDVersion.toString();
+  var jdversion2 = "JUST DANCE " + obj.originalJDVersion.toString();
+  var jdversion3 = "JD" + obj.originalJDVersion.toString();
 
-        var matches = [];
-        for (var song in CarouselDB) {
-          var obj = CarouselDB[song];
+  return (
+    title.includes(query) ||
+    jdversion.includes(query) ||
+    jdversion2.includes(query) ||
+    jdversion3.includes(query) ||
+    artist.includes(query) ||
+    mapname.includes(query)
+  );
+}).map(obj => obj.mapName.toString());
 
-          var title = obj.title.toString().toUpperCase();
-          var artist = obj.artist.toString().toUpperCase();
-          var mapname = obj.mapName.toString().toUpperCase();
-          var jdversion = obj.originalJDVersion.toString();
-          var jdversion2 = "JUST DANCE " + obj.originalJDVersion.toString();
-          var jdversion3 = "JD" + obj.originalJDVersion.toString();
+// Adicionar os resultados da busca à categoria apropriada
+var searchResultCategory = {
+  "__class": "Category",
+  "title": "[icon:SEARCH_RESULT] insert search result here",
+  "items": [],
+  "isc": "grp_row",
+  "act": "ui_carousel"
+};
 
-          if (
-            title.includes(query) == true ||
-            jdversion.includes(query) == true ||
-            jdversion2.includes(query) == true ||
-            jdversion3.includes(query) == true ||
-            artist.includes(query) == true ||
-            mapname.includes(query) == true
-          ) {
-            matches.push(obj.mapName.toString());
-          }
-        }
+search.categories.splice(1, 0, searchResultCategory); // Insere após a categoria de pesquisa
 
-        var carresponse = search;
-        carresponse.categories.forEach(function (carousel) {
-          // Add all the songs onto Just Dance Cosmos category
-          if (carousel.title == "Just Dance Cosmos") {
-            for (var songs in require("./cosmos-database/v1/songdb/pc-cmos-songdb.json")) {
-              var song =
-                require("./cosmos-database/v1/songdb/pc-cmos-songdb.json")[
-                  songs
-                ];
-              var obj = JSON.parse(
-                '{"__class":"Item","isc":"grp_cover","act":"ui_component_base","components":[{"__class":"JD_CarouselContentComponent_Song","mapName":"' +
-                  song.mapName +
-                  '"}],"actionList":"partyMap"}'
-              );
-              carousel.items.push(obj);
-            }
-          }
+// Adicionar os resultados correspondentes à categoria de resultados de pesquisa
+matches.forEach(mapName => {
+  var obj = {
+    "__class": "Item",
+    "isc": "grp_cover",
+    "act": "ui_component_base",
+    "components": [{
+      "__class": "JD_CarouselContentComponent_Song",
+      "mapName": mapName
+    }],
+    "actionList": "partyMap"
+  };
+  searchResultCategory.items.push(obj);
+});
+
+// Enviar a resposta
+response.send(search);
+
 
           // Playlist for New Songs
           if (
